@@ -52,10 +52,34 @@ function warnOnce(key: string, message: string): void {
 
 /** 剥除 JSONC 注释（行注释 // 与块注释）得到纯 JSON */
 function stripJsonc(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^\\:])\/\/.*$/gm, '$1')
-    .trim();
+  let result = '';
+  let inString = false;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (inString) {
+      result += c;
+      if (c === '\\') result += src[++i] ?? '';
+      else if (c === '"') inString = false;
+    } else if (c === '"') {
+      inString = true;
+      result += c;
+    } else if (c === '/' && src[i + 1] === '/') {
+      result += ' ';
+      while (i + 1 < src.length && src[i + 1] !== '\n') i++;
+    } else if (c === '/' && src[i + 1] === '*') {
+      result += ' ';
+      i += 2;
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) {
+        if (src[i] === '\n') result += '\n';
+        i++;
+      }
+      if (i >= src.length) throw new SyntaxError('Unterminated JSONC comment');
+      i++;
+    } else {
+      result += c;
+    }
+  }
+  return result.trim();
 }
 
 /** 读取并解析 JSONC 文件；不存在/解析失败 → undefined（调用方决定处理） */
