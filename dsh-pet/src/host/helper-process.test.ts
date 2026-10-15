@@ -13,11 +13,12 @@ import { test, describe, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import {
   HELPER_STABLE_MS,
+  HELPER_STOP_GRACE_MS,
   HelperProcess,
   dshHomeDir,
   defaultElectronExe,
@@ -139,7 +140,7 @@ describe('resolveElectronPath —— 候选优先级', () => {
             ? join('Electron.app', 'Contents', 'MacOS', 'Electron')
             : 'electron';
       const landed = join(dir, 'dshhome', 'electron', rel);
-      mkdirSync(join(dir, 'dshhome', 'electron'), { recursive: true });
+      mkdirSync(dirname(landed), { recursive: true });
       writeFileSync(landed, '');
       assert.equal(resolveElectronPath([]), landed);
     });
@@ -351,13 +352,26 @@ describe('HelperProcess.stopAndWait —— 停止要等进程真正退出（issu
     );
   });
 
-  test('连 SIGKILL 都不退 → 宽限期后仍 resolve（绝不挂住配置保存）', async () => {
-    const { stop } = fakeHelper(20);
-    const started = Date.now();
-    await stop(); // 全程没有 exit 事件
-    const spent = Date.now() - started;
-    assert.ok(spent >= 20, `至少等满超时再升级（实际 ${spent}ms）`);
-    assert.ok(spent < 3000, `应在宽限期内放弃等待，而不是无限挂住（实际 ${spent}ms）`);
+  test('连 SIGKILL 都不退 → 宽限期后仍 resolve（绝不挂住配置保存）', async (t) => {
+    // FakeChild has no OS handle keeping the loop alive while production timers are unref'ed.
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { fake, stop } = fakeHelper(20);
+    let resolved = false;
+    const pending = stop().then(() => {
+      resolved = true;
+    });
+    t.mock.timers.tick(19);
+    await new Promise(setImmediate);
+    assert.deepEqual(fake.signals, ['SIGTERM']);
+    assert.equal(resolved, false);
+    t.mock.timers.tick(1);
+    assert.deepEqual(fake.signals, ['SIGTERM', 'SIGKILL']);
+    t.mock.timers.tick(HELPER_STOP_GRACE_MS - 1);
+    await new Promise(setImmediate);
+    assert.equal(resolved, false);
+    t.mock.timers.tick(1);
+    await pending;
+    assert.equal(resolved, true);
   });
 
   test('已经退出的子进程 → 立即 resolve，不挂监听', async () => {

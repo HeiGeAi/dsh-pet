@@ -222,3 +222,55 @@ describe('readAllConfig —— 表情包开关合并（缺失取默认 / 非法�
     assert.equal(merged.main.whisperImageEnabled, true); // 回退默认 true
   });
 });
+
+describe('JSONC preserves strings', () => {
+  for (const value of ['cat // dog', 'cat /* dog */', 'https://example.invalid/a//b', 'quote " and \\ slash']) {
+    test(value, () => {
+      const dir = mkdtempSync(join(tmpdir(), 'dsh-jsonc-'));
+      try {
+        const paths = {
+          defaultFile: join(dir, 'default.jsonc'),
+          userFile: join(dir, 'main-config.json'),
+          petDir: join(dir, 'pet'),
+        };
+        writeFileSync(paths.defaultFile, JSON.stringify(BASE));
+        const config = { ...BASE, pets: [{ ...BASE.pets[0], name: value }], whisperPrompt: value };
+        writeFileSync(paths.userFile, '// real comment\n' + JSON.stringify(config) + '\n/* real comment */');
+        let merged = readAllConfig(paths);
+        assert.equal((merged.main.pets as { name: string }[])[0].name, value);
+        assert.equal(merged.main.whisperPrompt, value);
+        writeFileSync(paths.userFile, JSON.stringify(config));
+        merged = readAllConfig(paths);
+        assert.equal((merged.main.pets as { name: string }[])[0].name, value);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+describe('JSONC line comment endings', () => {
+  for (const ending of ['\n', '\r\n', '\r']) {
+    test(JSON.stringify(ending), () => {
+      const dir = mkdtempSync(join(tmpdir(), 'dsh-jsonc-lines-'));
+      try {
+        const paths = {
+          defaultFile: join(dir, 'default.jsonc'),
+          userFile: join(dir, 'main-config.json'),
+          petDir: join(dir, 'pet'),
+        };
+        writeFileSync(paths.defaultFile, JSON.stringify(BASE));
+        const prompt = 'keep my custom prompt';
+        for (const source of [
+          `// header${ending}${JSON.stringify({ whisperPrompt: prompt })}`,
+          `{${ending}// setting${ending}"whisperPrompt":${JSON.stringify(prompt)}${ending}}`,
+        ]) {
+          writeFileSync(paths.userFile, source);
+          assert.equal(readAllConfig(paths).main.whisperPrompt, prompt);
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+});
