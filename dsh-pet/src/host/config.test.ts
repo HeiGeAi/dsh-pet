@@ -224,7 +224,7 @@ describe('readAllConfig —— 表情包开关合并（缺失取默认 / 非法�
 });
 
 describe('JSONC preserves strings', () => {
-  for (const value of ['cat // dog', 'cat /* dog */', 'https://example.invalid/a', 'quote " and \\ slash']) {
+  for (const value of ['cat // dog', 'cat /* dog */', 'https://example.invalid/a//b', 'quote " and \\ slash']) {
     test(value, () => {
       const dir = mkdtempSync(join(tmpdir(), 'dsh-jsonc-'));
       try {
