@@ -361,11 +361,13 @@ describe('HelperProcess.stopAndWait —— 停止要等进程真正退出（issu
       resolved = true;
     });
     t.mock.timers.tick(19);
+    await new Promise(setImmediate);
     assert.deepEqual(fake.signals, ['SIGTERM']);
     assert.equal(resolved, false);
     t.mock.timers.tick(1);
     assert.deepEqual(fake.signals, ['SIGTERM', 'SIGKILL']);
     t.mock.timers.tick(HELPER_STOP_GRACE_MS - 1);
+    await new Promise(setImmediate);
     assert.equal(resolved, false);
     t.mock.timers.tick(1);
     await pending;

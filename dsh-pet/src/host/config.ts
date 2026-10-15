@@ -65,7 +65,7 @@ function stripJsonc(src: string): string {
       result += c;
     } else if (c === '/' && src[i + 1] === '/') {
       result += ' ';
-      while (i + 1 < src.length && src[i + 1] !== '\n') i++;
+      while (i + 1 < src.length && src[i + 1] !== '\n' && src[i + 1] !== '\r') i++;
     } else if (c === '/' && src[i + 1] === '*') {
       result += ' ';
       i += 2;

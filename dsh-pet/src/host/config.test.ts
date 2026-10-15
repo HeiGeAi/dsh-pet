@@ -248,3 +248,29 @@ describe('JSONC preserves strings', () => {
     });
   }
 });
+
+describe('JSONC line comment endings', () => {
+  for (const ending of ['\n', '\r\n', '\r']) {
+    test(JSON.stringify(ending), () => {
+      const dir = mkdtempSync(join(tmpdir(), 'dsh-jsonc-lines-'));
+      try {
+        const paths = {
+          defaultFile: join(dir, 'default.jsonc'),
+          userFile: join(dir, 'main-config.json'),
+          petDir: join(dir, 'pet'),
+        };
+        writeFileSync(paths.defaultFile, JSON.stringify(BASE));
+        const prompt = 'keep my custom prompt';
+        for (const source of [
+          `// header${ending}${JSON.stringify({ whisperPrompt: prompt })}`,
+          `{${ending}// setting${ending}"whisperPrompt":${JSON.stringify(prompt)}${ending}}`,
+        ]) {
+          writeFileSync(paths.userFile, source);
+          assert.equal(readAllConfig(paths).main.whisperPrompt, prompt);
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+});
