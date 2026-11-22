@@ -171,57 +171,46 @@ test(
         );
       });
 
-      await t.test('chat input stays usable while its surrounding transparent area passes through', async () => {
-        await page.evaluate('sprites[0].showChatFromMenu()');
-        await page.waitForSelector('.dsh-pet-chat');
-        const bounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getContentBounds());
-        const chat = await page.locator('.dsh-pet-chat').boundingBox();
-        await app.evaluate(
-          ({ screen }, p) => {
-            screen.getCursorScreenPoint = () => p;
-          },
-          {
-            x: bounds.x + chat.x + chat.width / 2,
-            y: bounds.y + chat.y + chat.height / 2,
-          },
-        );
-        await assertEventually(async () =>
-          app.evaluate(({ BrowserWindow }) => !BrowserWindow.getAllWindows()[0].testIgnoring),
-        );
-        await page
-          .locator('.dsh-pet-chat-input')
-          .fill('测试输入：长文本增长后仍然可以点击聊天框，旁边的应用保持可点击。'.repeat(4));
-        const expanded = await page.locator('.dsh-pet-chat').boundingBox();
-        assert.ok(expanded.height > chat.height);
-        await app.evaluate(
-          ({ screen }, p) => {
-            screen.getCursorScreenPoint = () => p;
-          },
-          {
-            x: bounds.x + expanded.x + expanded.width / 2,
-            y: bounds.y + expanded.y + expanded.height - 5,
-          },
-        );
-        await assertEventually(async () =>
-          app.evaluate(({ BrowserWindow }) => !BrowserWindow.getAllWindows()[0].testIgnoring),
-        );
-        await app.evaluate(
-          ({ screen }, p) => {
-            screen.getCursorScreenPoint = () => p;
-          },
-          {
-            x: bounds.x + 2,
-            y: bounds.y + bounds.height - 2,
-          },
-        );
-        await assertEventually(async () =>
-          app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].testIgnoring),
-        );
-        assert.equal(await page.evaluate('sprites[0].chatOpen'), true);
-        await page.locator('.dsh-pet-chat-input').press('Escape');
-        await page.locator('.dsh-pet-chat').waitFor({ state: 'detached' });
-        assert.equal(await page.evaluate('sprites[0].inputBusy()'), false);
-      });
+      await t.test(
+        'chat input stays usable while its surrounding transparent area passes through',
+        async (chatTest) => {
+          await page.evaluate('sprites[0].showChatFromMenu()');
+          const dialog = page.locator('.dsh-pet-chat');
+          const input = page.locator('.dsh-pet-chat-input');
+          chatTest.after(() => page.evaluate('sprites[0].chatMount?.close()'));
+          await dialog.waitFor();
+          const chat = await dialog.boundingBox();
+          await moveCursorInWindow(app, { x: chat.x + chat.width / 2, y: chat.y + chat.height / 2 });
+          await assertEventually(
+            () => app.evaluate(({ BrowserWindow }) => !BrowserWindow.getAllWindows()[0].testIgnoring),
+            'cursor inside the chat must make the native window interactive',
+          );
+          await input.fill('测试输入：长文本增长后仍然可以点击聊天框，旁边的应用保持可点击。'.repeat(4));
+          const expanded = await dialog.boundingBox();
+          assert.ok(expanded.height > chat.height);
+          const margin = await page.evaluate(() => ({ x: 2, y: window.innerHeight - 2 }));
+          await moveCursorInWindow(app, margin);
+          await assertEventually(() =>
+            app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].testIgnoring),
+          );
+          // Require a fresh hit in the added area rather than reading the previous interactive state.
+          const expandedPoint = { x: expanded.x + expanded.width / 2, y: expanded.y + expanded.height - 5 };
+          assert.ok(expandedPoint.y >= chat.y + chat.height);
+          await moveCursorInWindow(app, expandedPoint);
+          await assertEventually(
+            () => app.evaluate(({ BrowserWindow }) => !BrowserWindow.getAllWindows()[0].testIgnoring),
+            `expanded chat must be interactive at ${JSON.stringify({ expandedPoint, chat, expanded })}`,
+          );
+          await moveCursorInWindow(app, margin);
+          await assertEventually(() =>
+            app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].testIgnoring),
+          );
+          assert.equal(await page.evaluate('sprites[0].chatOpen'), true);
+          await input.press('Escape');
+          await dialog.waitFor({ state: 'detached' });
+          assert.equal(await page.evaluate('sprites[0].inputBusy()'), false);
+        },
+      );
 
       await t.test('missing pointerup and switching apps release stuck dragging/menu input', async () => {
         await page.evaluate(`(() => {
@@ -252,10 +241,22 @@ test(
   },
 );
 
-async function assertEventually(check) {
-  for (let i = 0; i < 20; i++) {
+async function moveCursorInWindow(app, point) {
+  await app.evaluate(({ BrowserWindow, screen }, offset) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    // Focusing the chat may move the native window after Playwright measures its DOM.
+    screen.getCursorScreenPoint = () => {
+      const bounds = win.getBounds();
+      return { x: bounds.x + offset.x, y: bounds.y + offset.y };
+    };
+  }, point);
+}
+
+async function assertEventually(check, message = 'native window did not restore click-through') {
+  const deadline = Date.now() + 4000;
+  while (Date.now() < deadline) {
     if (await check()) return;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  assert.fail('native window did not restore click-through');
+  assert.fail(message);
 }
