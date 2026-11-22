@@ -218,7 +218,8 @@ test(
           app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].testIgnoring),
         );
         assert.equal(await page.evaluate('sprites[0].chatOpen'), true);
-        await page.evaluate('sprites[0].chatClose()');
+        await page.locator('.dsh-pet-chat-input').press('Escape');
+        await page.locator('.dsh-pet-chat').waitFor({ state: 'detached' });
         assert.equal(await page.evaluate('sprites[0].inputBusy()'), false);
       });
 
