@@ -77,6 +77,10 @@ Object.assign(PetSprite.prototype, {
     this.balanceState = null; // 最近一次余额读数（展开态按页现算窗口明细与用量；balanceView 只是收起态的行）
     this.balanceViewIndex = 0; // 当前页：点一下切下一页（windows 是收起 / 窗口明细 / 用量，有用量才有第三页；custom 是 views.length 页）
     this.balanceFadeTimer = null; // 展开/收起的淡出等待（250ms 后才换内容，避免硬切）
+    // 环境气泡（查询天气）：读数、显隐与自己的计时器（与余额共用 bubbleTimer 会互相清掉）
+    this.envState = null;
+    this.envOn = false;
+    this.envTimer = null;
     this.prevTick = 0;
     // 说话（碎碎念/命令气泡/对话回复）：文本与配图由容器统一轮询 /state 后经 showWhisper 送进来。
     this.whisperOn = false;
@@ -164,8 +168,14 @@ Object.assign(PetSprite.prototype, {
     this.hit.setAttribute('aria-label', this.pet.name);
     this.bubble = document.createElement('div');
     this.bubble.className = 'pet-bubble';
-    // 气泡点击按当前槽位分流：工作气泡跳会话，余额气泡切页。都就地吞掉事件，别落到下面的本体命中层。
+    // 气泡点击按当前槽位分流：说话气泡戳破、工作气泡跳会话、余额气泡切页。都就地吞掉事件，别落到下面的本体命中层。
     this.bubble.addEventListener('click', (e) => {
+      if (this.whisperClickable()) {
+        e.stopPropagation();
+        e.preventDefault();
+        this.popWhisper();
+        return;
+      }
       if (this.workClickable()) {
         e.stopPropagation();
         e.preventDefault();
@@ -257,6 +267,12 @@ Object.assign(PetSprite.prototype, {
       { signal: ac.signal },
     );
 
+    // 主进程兜底：宠物自己走开、或窗口被别的窗口接走时页面收不到 mousemove，提示会一直亮着；
+    // 主进程按光标轮询判定「刚离开身体」后通知这里收起（setTip 幂等，与 mousemove 判定不冲突）。
+    if (window.petBridge && typeof window.petBridge.onPointerLeft === 'function') {
+      window.petBridge.onPointerLeft(() => this.setTip(false));
+    }
+
     this.subscribeCollision();
   },
 
@@ -268,7 +284,6 @@ Object.assign(PetSprite.prototype, {
     this.others = {}; // petId -> {x,y,vx,vy,size,bottomPad}（其它宠物的最新状态，来自主进程广播）
     this.throwState = null; // 飞行中的实时状态（被撞查询 / 其它窗碰撞检测时上报用）
     this.pressScoreFired = false; // 按下瞬间已触发过积分（pointerdown 即触发；click 据此不重复弹，同浏览器）
-    this.lastFlightReport = 0;
     if (window.petBridge && window.petBridge.onFlightStates) {
       window.petBridge.onFlightStates((states) => {
         if (!states || typeof states !== 'object') return;

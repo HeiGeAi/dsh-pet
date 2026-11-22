@@ -11,9 +11,11 @@ import { handleAssetsRoutes } from './assets.ts';
 import { handleAttachmentRoutes } from './attachment.ts';
 import { handleAvatarRoutes } from './avatar.ts';
 import { handleBalanceRoutes } from './balance.ts';
+import { handleCharacterRoutes } from './character.ts';
 import { handleChatRoutes } from './chat.ts';
 import { handleConfigRoutes } from './config/index.ts';
 import { handleDesktopRoutes } from './desktop.ts';
+import { handleEnvironmentRoutes } from './environment.ts';
 import { handleInteractionRoutes } from './interaction.ts';
 import { handleMenuRoutes } from './menu.ts';
 import { handleMotionRoutes } from './motion.ts';
@@ -33,6 +35,7 @@ const HANDLERS: readonly RouteHandler[] = [
   handleStateRoutes,
   handleSessionRoutes,
   handleBalanceRoutes,
+  handleEnvironmentRoutes,
   handleInteractionRoutes,
   handleMotionRoutes,
   handlePlaybackRoutes,
@@ -42,6 +45,7 @@ const HANDLERS: readonly RouteHandler[] = [
   handleTodoRoutes,
   handleVoiceRoutes,
   handleAvatarRoutes,
+  handleCharacterRoutes,
   handleAssetsRoutes,
 ];
 
@@ -59,6 +63,7 @@ function sleepGated(rest: string, method: string): boolean {
     rest === 'anim' ||
     rest === 'whisper' ||
     rest === 'balance' ||
+    rest === 'environment' ||
     rest === 'broadcast' ||
     rest === 'bubble/clear' ||
     rest === 'menu/click' ||

@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: dsh-pet HTTP API
-  version: 0.4.3
+  version: 0.4.9
   summary: DSH 桌宠插件的宿主 HTTP 接口
   description: |
     dsh-pet 的宿主（host）半侧通过 DSH 的 `webServer` 服务注册**一条前缀路由** `/dsh-pet-7340`，
@@ -305,8 +305,28 @@ paths:
           因为"刷新动作本身"完成了。要区分请读 `sections.balance.data.ok`。
         - 写入时会带上 `manual: true` 标记（只在本次刷新是用户主动触发时），
           消费端据此决定"余额不可用时要不要必弹文字说明"。
+        - 带 `?pet=` 时，叶子另带 `petId`：**只有这只宠物**弹气泡与档位动画；不带则不写归属，
+          所有开启余额的宠物照常显示（斜杠命令与周期刷新都走这条）。
         - 常规的周期刷新由宿主**自己的定时器**完成（周期来自配置
           `eventsRefreshSec.balance`，默认 1800 秒），前端不需要轮询它。
+      parameters:
+        - name: pet
+          in: query
+          required: false
+          description: |
+            目标宠物 id。给了就必须存在，并依次过显示端（`surface`）与占用锁门禁；
+            睡觉门禁由分发器统一处理（睡着时回 `sleeping`）。
+          schema:
+            type: string
+        - name: surface
+          in: query
+          required: false
+          description: |
+            显示端。带 `pet` 时**必填**（`web` / `desktop` / `both` / `any`），缺省或非法回 `bad-request`。
+            不带 `pet` 时该参数无效。
+          schema:
+            type: string
+            enum: [web, desktop, both, any]
       responses:
         "200":
           description: 刷新动作已完成（不代表余额可用）
@@ -314,6 +334,74 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OkResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
+  /dsh-pet-7340/environment:
+    post:
+      tags: [Action]
+      operationId: queryEnvironment
+      summary: 查一次此刻的城市与天气
+      description: |
+        查这台机器此刻所在的城市（IP 定位，免 key）与当前天气（Open-Meteo，免 key）。
+
+        - `?pet=` 缺省 = **纯查询**：只返回数据，不写 S。
+        - 带 `pet` 时必须存在，并依次过显示端（`surface`）与占用锁两道门禁；睡觉门禁由分发器
+          统一处理（睡着时回 `sleeping` 与拒绝台词）。通过后把结果写进 `sections.env`，
+          叶子里的 `petId` 决定哪只宠物点亮环境气泡。
+        - `?fresh=1` 跳过三级缓存（城市 6 小时 / 坐标 7 天 / 天气 1 小时）强制重查，
+          成功后覆盖缓存；其它情况走缓存，通常不产生网络请求。
+        - `?ip=1` 忽略配置里的天气城市（`environmentCity`），按出口 IP 定位；缺省则优先用配置里的城市。
+          设置页的「检测」固定带它——不带就会把用户已填的城市原样回显。
+        - 查不到不是错误：仍返回 `ok: true`，只是省略 `region` / `city` / `weather` 里拿不到的那几个。
+      parameters:
+        - name: pet
+          in: query
+          required: false
+          description: |
+            目标宠物 id。缺省 = 纯查询（不写 S、不带 `petId`）；给了就必须存在并过门禁。
+          schema:
+            type: string
+        - name: fresh
+          in: query
+          required: false
+          description: |
+            `1` = 跳过缓存强制重查（右键菜单「查询天气」固定带它）。缺省或其它值 = 走缓存。
+          schema:
+            type: string
+            enum: ["0", "1"]
+        - name: ip
+          in: query
+          required: false
+          description: |
+            `1` = 忽略配置里的天气城市（`environmentCity`），按出口 IP 定位（设置页「检测」固定带它）。
+            缺省或其它值 = 有配置就用配置的城市。
+          schema:
+            type: string
+            enum: ["0", "1"]
+        - name: surface
+          in: query
+          required: false
+          description: |
+            显示端。带 `pet` 时**必填**（`web` / `desktop` / `both` / `any`），用于判定该宠物是否显示在这一端；
+            缺省或非法回 `bad-request`。不带 `pet` 时该参数无效。
+          schema:
+            type: string
+            enum: [web, desktop, both, any]
+      responses:
+        "200":
+          description: |
+            查询结果。HTTP 状态码恒为 200（除 405）：业务失败通过 `ok: false` 表达。
+
+            `reason` 取值：`unknown-pet`（宠物不存在）、`pet-not-displayed`（该宠物当前不在这一端）、
+            `locked`（正被第三方占用）、`sleeping`（正在睡觉，附拒绝台词）、
+            `generate-error`（读配置失败）。
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/EnvironmentResponse"
+                  - $ref: "#/components/schemas/FailureResponse"
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
 
@@ -498,6 +586,15 @@ paths:
                     是否联动一次 `events.whisper` 动画。缺省 `true`（老行为）。
                     **只有严格 `false` 才关闭**——其余值（含 `"false"` 字符串）一律按"要联动"处理。
                   example: false
+                speak:
+                  type: boolean
+                  default: false
+                  description: |
+                    本次是否把这句话**念出来**。缺省 `false` = 只弹气泡、不出声。
+                    **只有严格 `true` 才播**——其余值（含 `"true"` 字符串）一律按不播处理。
+                    与 `?surface=` 是两道门：`speak: true` 且 `surface` 指定到具体一端（`web` / `desktop`）
+                    才写 `voiceTo`；`both` / `any` / 不带 `surface` 时不指定端，谁都不念。
+                  example: true
             examples:
               textOnly:
                 summary: 只说一句（缺省 10 秒 + 联动动画）
@@ -1866,9 +1963,9 @@ paths:
 
         - **只白名单字段会被保留**：`pets[]` 的 `id`/`name`/`size`/`sizePercent`/`balanceEnabled`/
           `whisperEnabled`/`workStatusEnabled`/`fixedEnabled`/`display`/`position`，以及顶层
-          `notificationsEnabled`/`clickSoundEnabled`/`whisperImageEnabled`/`chatImageEnabled`/
+          `notificationsEnabled`/`notifyWhenFocused`/`clickSoundEnabled`/`whisperImageEnabled`/`chatImageEnabled`/
           `chatAnimationEnabled`/`confineToScreen`/`trayEnabled`/`voiceEnabled`/`voiceName`/`voiceWhisperEnabled`/
-          `voiceTodoEnabled`/`physics`/`font`/`whisperModel`/`chatModel`/`chatMemoryRounds`/
+          `voiceTodoEnabled`/`voiceNotifyEnabled`/`physics`/`font`/`whisperModel`/`chatModel`/`chatMemoryRounds`/
           `chatImageLimit`。
           其余字段会沿用磁盘上用户文件里的原值（透传保留），所以设置页保存
           **不会抹掉**你手写的精调配置（`whisperPrompt`/`memes`/`eventsRefreshSec` 等）。
@@ -1910,6 +2007,7 @@ paths:
                         marginX: 24
                         marginY: 24
                   notificationsEnabled: true
+                  notifyWhenFocused: false
                   whisperImageEnabled: true
                   chatImageEnabled: true
       responses:
@@ -2351,15 +2449,18 @@ paths:
       description: |
         与 `/voice/speak` 反向：音频进、文字出。
 
-        - 能力来自宿主的语音识别服务；宿主没启用语音输入插件时返回 `unsupported`，
-          不把它当成识别失败。
+        - **多实现并存**：宿主插件可经 Cordis 服务 `petApi7340.speech.register` 注册自己的识别实现；
+          `/voice/hear-providers` 列出全部可用实现。
+        - `provider` 不传时用配置里的 `main.speechProvider`；解析不到按 `bad-request` 拒绝，
+          不会静默换成别的实现。
         - 音频必须是 **16kHz / 单声道 / PCM16 的 WAV**，base64 后放在 `audio` 字段。
-          其它容器（mp3/webm/ogg）或其它采样率一律拒绝。格式由宿主识别器校验，
+          其它容器（mp3/webm/ogg）或其它采样率一律拒绝。格式由实现校验，
           不合规时返回 `generate-error` 并附原始说明。
-        - 解码后不得超过 768 KiB（约 24 秒）：请求体上限是 1 MiB，base64 会再放大三分之一。
+        - 语言由实现自动检测，请求不带语言参数。
+        - 解码后不得超过 7 MiB（约 200 秒 16kHz 单声道）：请求体上限是 10 MiB，base64 会再放大三分之一。
         - 整段一次性识别，不做流式。
-        - 参数问题返回 `bad-request`，能力缺失返回 `unsupported`，识别器报错返回
-          `generate-error`；三者都是 HTTP 200 + `{ ok: false, reason, message }`。
+        - 参数问题返回 `bad-request`，能力缺失（插件没装、没配 key）返回 `unsupported`，
+          识别失败返回 `generate-error`；三者都是 HTTP 200 + `{ ok: false, reason, message }`。
           只有请求体不是合法 JSON 才是 400，方法不对是 405。
       requestBody:
         required: true
@@ -2372,16 +2473,16 @@ paths:
               properties:
                 audio:
                   type: string
-                  description: 16kHz/单声道/PCM16 WAV 的 base64；解码后上限 768 KiB。
-                language:
+                  description: 16kHz/单声道/PCM16 WAV 的 base64；解码后上限 7 MiB（约 200 秒）。
+                provider:
                   type: string
-                  description: 语言提示，如 `zh` / `en`；缺省由宿主识别器决定。
+                  description: 识别实现 id，取值见 `/voice/hear-providers`；缺省用配置 `main.speechProvider`。
       responses:
         "200":
           description: |
             成功时是 `{ ok: true, text }`；失败时是 `{ ok: false, reason, message }`，
-            reason 取值 `bad-request`（参数非法）/ `unsupported`（宿主没有可用识别器）/
-            `generate-error`（识别器失败或超时）。
+            reason 取值 `bad-request`（参数非法）/ `unsupported`（实现不可用：插件没装、没配 key
+            或模型未就绪）/ `generate-error`（识别失败或超时）。
           content:
             application/json:
               schema:
@@ -2404,22 +2505,54 @@ paths:
         "405":
           description: 方法不是 POST。
 
+  /dsh-pet-7340/voice/hear-providers:
+    get:
+      tags: [Voice]
+      operationId: getHearProviders
+      summary: 列出可用的语音识别实现
+      description: 与 `/voice/hear` 的 `provider` 字段同源；前端据此渲染选择器，不要硬编码 id。
+      responses:
+        "200":
+          description: 识别实现目录，按注册顺序。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, providers]
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name]
+                      properties:
+                        id:
+                          type: string
+                          description: provider id，如 `dsh`；写进配置 `main.speechProvider` 的就是它。
+                        name:
+                          type: string
+                          description: 展示名，如 `DSH 语音插件`。
+        "405":
+          description: 方法不是 GET。
+
   /dsh-pet-7340/voice/speak:
     post:
       tags: [Voice]
       operationId: synthesizeVoice
       summary: 合成一段语音
       description: |
-        把一段中文文本合成为 mp3，成功时直接返回文件本体。
+        把一段中文文本合成为 mp3 或 wav，成功时直接返回文件本体。
 
-        - **合成源可被第三方覆盖**：宿主插件可经 Cordis 服务 `petApi7340.voice.register`
-          注册自己的实现；注册后本端点改走该实现，未注册时走内置实现。两边返回的都是 mp3，
-          调用方无需区分。
-        - 覆盖期间 `voice` 参数不生效（音色由第三方实现自己决定），但校验口径不变：
-          非法值仍按 `bad-request` 拒绝。
-        - 第三方实现必须返回 mp3 字节；返回其它格式浏览器播不出来，空字节按 `generate-error` 处理。
-        - 同一「来源 + 音色 + 语速 + 文本」只会合成一次，命中缓存时不再联网；来源即内置实现
-          或第三方 id，因此切换实现后不会命中旧音频。
+        - **多实现并存**：宿主插件可经 Cordis 服务 `petApi7340.voice.register` 注册自己的实现，
+          每个实现声明自己的音色清单；`/voice/voices` 按 provider 分组列出全部音色。
+        - 音色 id 是 `provider/音色` 的限定形态；`voice` 不传时用配置里的 `main.voiceName`。
+          解析不到按 `bad-request` 拒绝，不会替换成另一个音色。
+        - 输出格式由实现声明（mp3 / wav），应答的 `Content-Type` 与之一致。
+        - 同一「限定音色 + 语速 + 文本」只会合成一次，命中缓存时不再调用实现；限定 id 含
+          provider，因此换实现或换音色都不会命中旧音频。
         - 合成串行执行，同时最多排队 3 个；超出返回 `voice-busy`，调用方可稍后重试。
         - 参数问题、队列满、上游失败都是业务失败：HTTP 200 + `{ ok: false, reason, message }`。
         只有请求体不是合法 JSON 才是 400，方法不对是 405。
@@ -2438,7 +2571,9 @@ paths:
                   maxLength: 500
                 voice:
                   type: string
-                  description: 音色 id，必须来自 `/voice/voices`；缺省 `zh-CN-XiaoxiaoNeural`。
+                  description: |
+                    音色限定 id（`provider/音色`），取值见 `/voice/voices`；
+                    缺省用配置里的 `main.voiceName`，两者都没有或解析不到时按 `bad-request` 拒绝。
                 rate:
                   type: string
                   description: prosody 语速表达式，如 `+0%` / `-10%`；允许 -50%..+100%，缺省 `+0%`。
@@ -2446,10 +2581,14 @@ paths:
       responses:
         "200":
           description: |
-            成功时是 mp3 音频；失败时是 JSON `{ ok: false, reason, message }`，
+            成功时是 mp3 或 wav 音频（由实现声明）；失败时是 JSON `{ ok: false, reason, message }`，
             reason 取值 `bad-request`（参数非法）/ `voice-busy`（队列已满）/ `generate-error`（上游失败或超时）。
           content:
             audio/mpeg:
+              schema:
+                type: string
+                format: binary
+            audio/wav:
               schema:
                 type: string
                 format: binary
@@ -2475,35 +2614,102 @@ paths:
       tags: [Voice]
       operationId: getVoices
       summary: 列出可用音色
-      description: 与 `/voice/speak` 的白名单同源；前端据此渲染音色选择器，不要硬编码 id。
+      description: |
+        按 provider 分组列出所有已注册实现的音色；前端据此渲染音色选择器，不要硬编码 id。
+        音色 `id` 是限定形态，写进配置 `main.voiceName` 的就是它。
       responses:
         "200":
-          description: 音色列表。
+          description: 音色目录，按注册顺序分组。
           content:
             application/json:
               schema:
                 type: object
-                required: [ok, voices]
+                required: [ok, providers]
                 properties:
                   ok:
                     type: boolean
                     const: true
-                  voices:
+                  providers:
                     type: array
                     items:
                       type: object
-                      required: [id, name, tag, default]
+                      required: [id, name, voices]
                       properties:
                         id:
                           type: string
+                          description: provider id，如 `edge`。
                         name:
                           type: string
-                        tag:
-                          type: string
-                        default:
-                          type: boolean
+                          description: 展示名，设置页用作分组标题。
+                        voices:
+                          type: array
+                          items:
+                            type: object
+                            required: [id, name]
+                            properties:
+                              id:
+                                type: string
+                                description: 限定 id，如 `edge/zh-CN-XiaoyiNeural`。
+                              name:
+                                type: string
+                              tag:
+                                type: string
+                                description: 展示用副标题，如「女 · 活泼」；可能缺省。
         "405":
           description: 方法不是 GET。
+
+  /dsh-pet-7340/character:
+    get:
+      tags: [Assets]
+      operationId: getCharacter
+      summary: 获取角色参考图（第三方自建生图时对齐角色）
+      description: |
+        按素材根回一张角色参考图（通常是三视图），给第三方插件自己做生图时保持角色一致用。
+
+        **dsh-pet 不代调生图模型**：这个端点只交付「什么叫像这只角色」，出图、模型、key 与
+        计费都在调用方。所以它不需要图像服务商配置，也不消耗宿主的额度。
+
+        查找顺序：`pet/<素材根>-character.<ext>`（pet pack 自带）→ 包内
+        `assets/<素材根>-character.<ext>`（随包发布）。扩展名按 png / jpg / jpeg / webp / gif
+        依次探测，命中第一个即返回；扩展名同时决定 `content-type`。
+
+        参数名是 `root` 而不是 `pet`：要的是素材根（目录前缀），不是其它端点 `PetIdQuery.pet`
+        的宠物实例 id。与 `/logo?root=`、`/pet-avatar?root=` 同口径。
+      parameters:
+        - name: root
+          in: query
+          required: true
+          description: |
+            素材根（`pet/<名>-config.json(c)` 的文件名前缀）——**必填**，没有缺省值：
+            猜一个默认值会让调用方静默拿到别只宠物的脸。含路径分隔符等非法字符 → 400。
+          schema:
+            type: string
+          example: main
+      responses:
+        "200":
+          description: |
+            图片字节；`content-type` 由命中的扩展名决定。
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+            image/gif:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: 缺 `root`，或 `root` 含路径分隔符等非法字符（`text/plain`）。
+        "404":
+          description: "该素材根没有角色参考图（`text/plain`，正文 `dsh-pet: character not found`）。"
 
   /dsh-pet-7340/logo:
     get:
@@ -2581,7 +2787,7 @@ paths:
 
         - **只属于 pet pack**：`root=main`（内置条目）直接拒绝——`pet/` 目录不接内置的头像，
           内置永远用插件默认 logo。
-        - **上限 768 KiB（解码后）**：请求体上限 1 MiB，base64 膨胀 4/3，所以原图约 750 KB 封顶；
+        - **上限 768 KiB（解码后）**：按头像尺寸独立定，与请求体上限无关；
           设置页会先把图缩到长边 512 再上传。
         - **只校验「文件头像图片 + 在预算内」**：不裁剪、不重编码，尺寸与画质由调用方担保。
         - 落盘后**立即生效**：不是配置字段，不需要 `PUT /config`，也不重启桌面 Helper。
@@ -2697,7 +2903,9 @@ paths:
       description: |
         静态图，两种形式：
 
-        - `/dsh-pet-7340/pic/<名>.png` → **包内** `assets/pic/`（方形 png，系统通知图标用）。
+        - `/dsh-pet-7340/pic/<名>.png` → 通知图标、拖拽光标、玩法图等静态图（`<名>` 可含子目录）：
+          用户目录 `$DSH_HOME/dsh-pet/pic/` 优先，其次包内 `assets/pic/`，逐文件覆盖。
+          用户层在包外，插件升级重装只会还原包内素材，不会冲掉用户放进去的同名文件。
         - `/dsh-pet-7340/pic/memes/<素材根>/<名>.png` → 表情包（碎碎念/对话配图用的图），
           按素材根决定**素材归属**，与动画（`/thumb`）同一套语义：
           1. `pet/<素材根>-memes/` 存在（种类自带表情包）：**只查该目录**，查不到即 `404` 显式报错，
@@ -3242,6 +3450,59 @@ components:
       description: |
         生成成功。文本**仍然**照旧写进 `pets.<id>.say`——其它消费端（网页、桌面、第三方监听）
         继续从 `/state` 读；返回值只是让发起的这一方省一次往返，不改变任何现有展示链路。
+
+    EnvironmentWeather:
+      type: object
+      required: [city, summary, temperatureC, apparentC, humidityPercent, windKph, code, observedAt]
+      properties:
+        city:
+          type: string
+          description: 天气站点名（地名搜索返回的中文名，可能与 IP 给的城市差一个字）。
+        summary:
+          type: string
+          description: 天气短语，如「阴」。
+        temperatureC:
+          type: number
+          description: 气温（°C）。
+        apparentC:
+          type: number
+          description: 体感温度（°C）。
+        humidityPercent:
+          type: number
+          description: 相对湿度（%）。
+        windKph:
+          type: number
+          description: 风速（km/h）。
+        code:
+          type: integer
+          description: WMO 天气码（渲染层可据此配图标）。
+        observedAt:
+          type: string
+          description: 观测时刻，站点当地时间（ISO 字符串，不带时区后缀）。
+      description: 当前天气快照，字段与宿主 `WeatherSnapshot` 同形。
+
+    EnvironmentResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        region:
+          type: string
+          description: 省 / 州，如「江西省」；IP 库没给时不出现。
+        city:
+          type: string
+          description: 市，如「南昌市」；定位失败时不出现。
+        weather:
+          $ref: "#/components/schemas/EnvironmentWeather"
+        petId:
+          type: string
+          description: |
+            只在带 `?pet=` 时出现：结果已写进 `sections.env`，这只宠物据此点亮环境气泡。
+      description: |
+        查询结果。省市两段分开给，拼成一句话或换成富渲染都是消费方的事。
+        拿不到的字段一律省略，不用 `null` 占位。
 
     FailureResponse:
       type: object
@@ -4120,7 +4381,8 @@ components:
           description: |
             **这一句该由哪一端念**。两条取值规则：
             路由上带 `?surface=` 的（`POST /whisper`、`POST /broadcast`）用请求面——`surface=web` / `desktop`
-            原样落地，`both` / `any` 不足以指定一端，退回第二条；其余来源（周期碎碎念、待办提醒、对话回复、
+            原样落地，`both` / `any` 不足以指定一端，退回第二条；其中 `POST /broadcast` 还要求 body 里
+            `speak: true`，缺省只弹气泡、不写这个字段；其余来源（周期碎碎念、待办提醒、对话回复、
             `/chat` 命令）按 `display` 推导：含 `desktop` 就写 `desktop`，只在网页显示才写 `web`——
             桌面端只要 helper 在跑就一定有窗口，网页端随时可能被关掉。
             缺省 = 谁都不念。消费端按自己所在的一端比对：不匹配就只弹气泡、不出声；同一端有多个页面时各自比对。
@@ -4310,6 +4572,11 @@ components:
             $ref: "#/components/schemas/PetEntry"
         notificationsEnabled:
           type: boolean
+        notifyWhenFocused:
+          type: boolean
+          description: |
+            前台聚焦时也提醒（默认 `false`）：打开后页面可见且持有焦点时照样弹系统通知、
+            照样播报工作状态语音；缺键按 `false` 处理，旧配置行为不变。
         whisperImageEnabled:
           type: boolean
         chatImageEnabled:
@@ -4321,16 +4588,45 @@ components:
             由模型在语境贴合时挑一个当场表演；关掉则纯文字。设置页「全局开关」卡里的「对话动作联动」写的就是它。
         confineToScreen:
           type: boolean
+        voiceEnabled:
+          type: boolean
+          description: |
+            手动播报开关（全局默认）：右键菜单、斜杠命令触发的碎碎念与对话回复是否念出来。
+            与 `voiceWhisperEnabled`/`voiceTodoEnabled`/`voiceNotifyEnabled` 平级，各自独立。
+            设置页「语音播报」卡里的「手动播报」开关写的就是它。缺失默认 `false`。
+        voiceName:
+          type: string
+          description: |
+            音色限定 id（`provider/音色`），取值见 `/voice/voices`；写错或留空即解析不到，
+            合成按 `bad-request` 失败并告警，不会回落到另一个音色。设置页「语音播报」卡的音色下拉写的就是它。
+        speechProvider:
+          type: string
+          description: |
+            语音识别实现 id（如 `dsh`），取值见 `/voice/hear-providers`；写错或留空即解析不到，
+            识别按 `bad-request` 失败并告警，不会回落到另一个实现。设置页「语音播报」卡的语音识别下拉写的就是它。
+        voiceVolume:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: |
+            播放音量系数：0–1，1 = 最大音量，0 = 静音；四类语音共用这一个音量。
+            只改播放响度，不重新合成音频。设置页「语音播报」卡的音量输入框写的就是它。缺失默认 1。
         voiceWhisperEnabled:
           type: boolean
           description: |
-            周期碎碎念要不要念出来（全局默认）。受 `voiceEnabled` 总开关约束：总开关关掉时本项不生效。
+            周期碎碎念要不要念出来（全局默认）。
             设置页「语音播报」卡里的「碎碎念播报」开关写的就是它。缺失默认 `false`。
         voiceTodoEnabled:
           type: boolean
           description: |
-            待办提醒要不要念出来（全局默认）。同样受 `voiceEnabled` 总开关约束。
+            待办提醒要不要念出来（全局默认）。
             设置页「语音播报」卡里的「待办播报」开关写的就是它。缺失默认 `false`。
+        voiceNotifyEnabled:
+          type: boolean
+          description: |
+            工作状态播报要不要念出来（全局默认）：任务完成 / 出错 / 等你确认时念一句该档位配置的
+            工作状态文案；和系统通知同一取向，用户不在本页时才念。只念配置的台词，不念 `task`。
+            设置页「语音播报」卡里的「通知播报」开关写的就是它。缺失默认 `false`。
         chatMemoryRounds:
           type: integer
           minimum: 0
