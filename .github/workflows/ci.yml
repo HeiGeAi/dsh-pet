@@ -42,3 +42,34 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: Run Chromium browser tests
         run: pnpm run test:ui
+
+  macos-native:
+    name: macOS Electron native window
+    runs-on: macos-26
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: dsh-pet
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build desktop shared core
+        run: pnpm run build:desktop-core
+      - name: Run native Electron window tests
+        env:
+          DSH_PET_ELECTRON_MIRROR: https://github.com/electron/electron/releases/download/
+        run: |
+          export DSH_HOME="$RUNNER_TEMP/dsh-pet"
+          pnpm run ensure:electron
+          export DSH_PET_ELECTRON="$DSH_HOME/electron/Electron.app/Contents/MacOS/Electron"
+          test -x "$DSH_PET_ELECTRON"
+          node --test scripts/tests/desktop-macos.test.mjs
