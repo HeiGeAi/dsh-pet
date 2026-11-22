@@ -136,7 +136,10 @@ export const pt: Record<Key, string> = {
     'Os pets principais foram salvos, mas {names} não pôde ser gravado: verifique se o config do pacote é válido e se a pasta permite escrita.',
   notifyToggle: 'Notificações do sistema',
   notifyToggleHint:
-    'Avisos do sistema (canto inferior direito do desktop) para fim de conversa, falhas, pedidos de permissão e perguntas — só enquanto esta janela está sem foco.',
+    'Avisos do sistema (canto inferior direito do desktop) para fim de conversa, falhas, pedidos de permissão e perguntas. Por padrão, só enquanto esta janela está sem foco.',
+  notifyWhenFocusedToggle: 'Avisar também em foco',
+  notifyWhenFocusedToggleHint:
+    'Mostra avisos e lê o status do trabalho também quando esta página está visível e a janela está em foco. Desligado por padrão — ligue se não quiser perder conclusões e erros enquanto olha a janela.',
   clickSoundToggle: 'Som de clique',
   clickSoundToggleHint:
     'Toca o som de clique embutido (assets/sound/click-duck.wav, volume 0.5) quando o pet é clicado; cliques repetidos em até 100ms tocam uma vez só, então vários pets não empilham som. Desligue para silêncio total. Gravado na configuração do usuário junto com o "Salvar".',
@@ -157,20 +160,35 @@ export const pt: Record<Key, string> = {
     'Mostra um ícone na área de notificação (barra de menus no macOS) quando o modo desktop inicia. Ele lista todos os pets da configuração e alterna a exibição de cada um — inclusive os que estão fora do desktop agora e não têm janela para clicar com o botão direito. Sem ele, para trazer um pet de volta ao desktop é preciso abrir o navegador (a página de configuração, ou clicar com o botão direito no pet na web). O Windows já esconde ícones de terceiros na gaveta "ícones ocultos". Só afeta o modo desktop.',
   voiceTitle: 'Voz',
   voiceHint:
-    'Três interruptores e uma voz: o mestre controla a fala automática; os dois secundários controlam um tipo de mensagem proativa cada. Tudo desligado por padrão; gravado na configuração do usuário ao "Salvar" (nunca na hora).',
-  voiceEnabled: 'Falar respostas',
+    'Quatro interruptores e uma voz: cada tipo de fala tem o próprio interruptor e nenhum depende de outro. Tudo desligado por padrão; gravado na configuração do usuário ao "Salvar" (nunca na hora).',
+  voiceEnabled: 'Falar sussurros manuais',
   voiceEnabledHint:
-    'Interruptor mestre da fala automática. Desligado, sussurros periódicos e lembretes de tarefas ficam mudos (os dois secundários abaixo não têm efeito). Sussurro manual, respostas da conversa e o botão de alto-falante do painel de conversa não são afetados — você pediu, então a origem fala direto. Só decide se sai som: balões, memória da conversa e notificações do sistema não mudam; falha na síntese só gera log e nunca interrompe a conversa.',
+    'Fala os sussurros disparados pelo menu de contexto ou por um comando de barra, e também as respostas da conversa. O botão de alto-falante do painel de conversa fala uma única frase assim que você o aperta. Só decide se sai som: balões, memória da conversa e pop-ups de notificação do sistema não mudam; falha na síntese só gera log e nunca interrompe a conversa.',
   voiceWhisperEnabled: 'Falar sussurros',
   voiceWhisperEnabledHint:
-    'Fala o sussurro gerado periodicamente (o sussurro manual pelo botão direito não é afetado). Dependente do interruptor mestre acima. Desligado por padrão — sussurros são narração de fundo e não devem fazer barulho sem pedir.',
+    'Fala o sussurro gerado periodicamente. Desligado por padrão — sussurros são narração de fundo e não devem fazer barulho sem pedir.',
   voiceTodoEnabled: 'Falar lembretes de tarefas',
   voiceTodoEnabledHint:
-    'Fala o lembrete quando uma tarefa vence (o balão continua aparecendo; isto só decide se fala). Dependente do interruptor mestre acima. Desligado por padrão.',
+    'Fala o lembrete quando uma tarefa vence (o balão continua aparecendo; isto só decide se fala). Desligado por padrão.',
+  voiceNotifyEnabled: 'Falar estado de trabalho',
+  voiceNotifyEnabledHint:
+    'Fala uma frase configurada de estado de trabalho quando uma tarefa termina, falha ou aguarda sua confirmação. Como as notificações do sistema, só fala enquanto você não está nesta página (outro aplicativo, sem foco, minimizado) — sem interromper enquanto você olha para a tela. Só a frase configurada é falada, nunca o detalhe da tarefa. Desligado por padrão.',
   voiceNameLabel: 'Voz',
+  voiceNameHint: 'Qual voz lê o texto. As vozes vêm da implementação de síntese; mais aparecem ao instalar outra.',
+  speechProviderLabel: 'Reconhecimento de voz',
+  speechProviderHint:
+    'Qual implementação transcreve a gravação. Mais de uma opção aparece apenas com o plugin de entrada de voz instalado; a escolha é salva e um provedor ausente falha em vez de trocar sozinho.',
   voiceVolumeLabel: 'Volume',
   voiceVolumeHint:
-    'Volume de reprodução em decimal 0–1: 1 é o volume máximo (100%) e 0 silencia. Altera apenas a intensidade e não sintetiza o áudio de novo, então ajustá-lo não custa nada extra. É independente do interruptor geral acima: com ele desligado, não tem efeito.',
+    'Volume de reprodução em decimal 0–1: 1 é o volume máximo (100%) e 0 silencia. Altera apenas a intensidade e não sintetiza o áudio de novo, então ajustá-lo não custa nada extra. Os quatro tipos de fala compartilham este mesmo volume.',
+  environmentTitle: 'Ambiente e localização',
+  environmentHint: 'Qual cidade é usada para a previsão do tempo. As alterações são gravadas com «Salvar».',
+  environmentCityLabel: 'Cidade',
+  environmentCityHint: 'Informe um nome de cidade — forma curta ou oficial completa.',
+  environmentCityPlaceholder: 'Vazio = automático',
+  environmentDetect: 'Detectar',
+  environmentDetected: 'Preenchido: {city}',
+  environmentDetectFailed: 'Falha na detecção — informe a cidade manualmente',
   physicsTitle: 'Física (sensação de arrastar e arremessar)',
   physicsHint:
     'Padrão global, compartilhado por todos os pets (um pet pack pode sobrescrever no arquivo do próprio tipo); gravado na configuração do usuário ao "Salvar" (nunca na hora). No navegador vale na hora; no desktop vale quando o "Salvar" recarrega as janelas do pet.',

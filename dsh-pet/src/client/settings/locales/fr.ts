@@ -137,7 +137,10 @@ export const fr: Record<Key, string> = {
     "Compagnons principaux enregistrés, mais {names} n'ont pas pu être écrits : vérifiez que la configuration du pack est valide et que le dossier est accessible en écriture.",
   notifyToggle: 'Notifications système',
   notifyToggleHint:
-    "Notifications du système d'exploitation (en bas à droite du bureau) pour la fin d'une conversation, les échecs, les demandes de permission et les questions — uniquement lorsque cette fenêtre n'a pas le focus.",
+    "Notifications du système d'exploitation (en bas à droite du bureau) pour la fin d'une conversation, les échecs, les demandes de permission et les questions. Par défaut, uniquement lorsque cette fenêtre n'a pas le focus.",
+  notifyWhenFocusedToggle: 'Notifier aussi au premier plan',
+  notifyWhenFocusedToggleHint:
+    "Affiche les notifications et lit les lignes d'état du travail même lorsque cette page est visible et que la fenêtre a le focus. Désactivé par défaut — activez-le pour ne pas manquer les fins et les échecs pendant que vous regardez la fenêtre.",
   clickSoundToggle: 'Son au clic',
   clickSoundToggleHint:
     "Joue le son intégré (assets/sound/click-duck.wav, volume 0,5) quand on clique sur un compagnon ; les clics répétés en moins de 100 ms ne sonnent qu'une fois, donc plusieurs compagnons ne se superposent jamais. Désactivez-le pour un silence total. Écrit dans la configuration utilisateur avec « Enregistrer ».",
@@ -158,20 +161,36 @@ export const fr: Record<Key, string> = {
     "Affiche une icône dans la zone de notification (barre de menus sur macOS) dès que le mode bureau démarre. Elle liste tous les compagnons de la configuration et permet de basculer chacun entre bureau et web / aucun — y compris ceux qui ne sont pas sur le bureau et n'ont donc aucune fenêtre à cliquer droit. Une fois désactivée, ramener un compagnon sur le bureau exige d'ouvrir le navigateur (la page de configuration, ou un clic droit sur le compagnon web). Windows range déjà ces icônes dans le panneau « icônes masquées ». Mode bureau uniquement.",
   voiceTitle: 'Synthèse vocale',
   voiceHint:
-    "Trois interrupteurs et une voix : l'interrupteur principal commande la lecture automatique, les deux sous-interrupteurs commandent chacun un type de message proactif. Tout est désactivé par défaut et écrit dans la configuration utilisateur lors de l'enregistrement (jamais immédiatement).",
-  voiceEnabled: 'Lecture vocale',
+    "Quatre interrupteurs et une voix : chaque type de parole a son propre interrupteur, aucun ne dépend d'un autre. Tout est désactivé par défaut et écrit dans la configuration utilisateur lors de l'enregistrement (jamais immédiatement).",
+  voiceEnabled: 'Lire les murmures manuels',
   voiceEnabledHint:
-    "Interrupteur principal de la lecture automatique. Désactivé, les murmures périodiques et les rappels de tâches restent muets (les deux sous-interrupteurs ci-dessous n'ont alors aucun effet). Les murmures manuels, les réponses de discussion et le bouton haut-parleur du panneau de discussion ne sont pas concernés — vous les avez demandés, la surface qui les déclenche les lit directement. Cela ne décide que du son émis : bulles, mémoire de discussion et notifications système restent intactes ; un échec de synthèse est seulement journalisé et n'interrompt jamais la conversation.",
+    "Lit les murmures déclenchés par le clic droit ou une commande slash, ainsi que les réponses de discussion. Le bouton haut-parleur du panneau de discussion lit une seule réplique dès que vous appuyez. Cela ne décide que du son émis : bulles, mémoire de discussion et pop-ups de notification système restent intacts ; un échec de synthèse est seulement journalisé et n'interrompt jamais la conversation.",
   voiceWhisperEnabled: 'Lire les murmures',
   voiceWhisperEnabledHint:
-    "Lit le murmure généré périodiquement (un murmure manuel par clic droit n'est pas concerné). Soumis à l'interrupteur principal ci-dessus. Désactivé par défaut — les murmures sont une narration de fond et ne doivent pas faire de bruit sans qu'on le demande.",
+    "Lit le murmure généré périodiquement. Désactivé par défaut — les murmures sont une narration de fond et ne doivent pas faire de bruit sans qu'on le demande.",
   voiceTodoEnabled: 'Lire les rappels de tâches',
   voiceTodoEnabledHint:
-    "Lit un rappel de tâche à son échéance (la bulle s'affiche toujours ; cet interrupteur décide seulement s'il est lu). Soumis à l'interrupteur principal ci-dessus. Désactivé par défaut.",
+    "Lit un rappel de tâche à son échéance (la bulle s'affiche toujours ; cet interrupteur décide seulement s'il est lu). Désactivé par défaut.",
+  voiceNotifyEnabled: "Lire l'état de travail",
+  voiceNotifyEnabledHint:
+    "Lit une réplique d'état de travail configurée quand une tâche se termine, échoue ou attend votre confirmation. Comme les notifications système, elle n'est lue que lorsque vous n'êtes pas sur cette page (autre application, sans focus, réduite) — aucune interruption pendant que vous regardez l'écran. Seule la réplique configurée est lue, jamais le détail de la tâche. Désactivé par défaut.",
   voiceNameLabel: 'Voix',
+  voiceNameHint:
+    "Quelle voix lit le texte. Les voix viennent de l'implémentation de synthèse ; d'autres apparaissent avec une autre implémentation.",
+  speechProviderLabel: 'Reconnaissance vocale',
+  speechProviderHint:
+    "Quelle implémentation transcrit l'enregistrement. Plusieurs options n'apparaissent qu'avec un plugin de saisie vocale installé ; le choix est enregistré et un fournisseur absent échoue au lieu de basculer.",
   voiceVolumeLabel: 'Volume',
   voiceVolumeHint:
-    'Volume de lecture en décimal 0–1 : 1 correspond au volume maximal (100 %), 0 coupe le son. Seule l’intensité change et l’audio n’est pas resynthétisé, donc le régler ne coûte rien de plus. Indépendant de l’interrupteur général ci-dessus : il est sans effet quand celui-ci est désactivé.',
+    'Volume de lecture en décimal 0–1 : 1 correspond au volume maximal (100 %), 0 coupe le son. Seule l’intensité change et l’audio n’est pas resynthétisé, donc le régler ne coûte rien de plus. Les quatre types de parole partagent ce même volume.',
+  environmentTitle: 'Environnement et localisation',
+  environmentHint: 'Quelle ville sert à la météo. Les modifications sont écrites avec « Enregistrer ».',
+  environmentCityLabel: 'Ville',
+  environmentCityHint: 'Saisissez un nom de ville — forme courte ou officielle complète.',
+  environmentCityPlaceholder: 'Vide = automatique',
+  environmentDetect: 'Détecter',
+  environmentDetected: 'Rempli : {city}',
+  environmentDetectFailed: 'Échec de la détection — saisissez la ville manuellement',
   physicsTitle: 'Physique (ressenti du glisser-lancer)',
   physicsHint:
     "Valeurs par défaut globales, partagées par tous les compagnons (un pet pack peut les remplacer dans son propre fichier de type) ; écrites dans la configuration utilisateur lors de l'enregistrement (jamais immédiatement). Appliquées immédiatement dans le navigateur ; sur le bureau, après que l'enregistrement a rechargé les fenêtres des compagnons.",

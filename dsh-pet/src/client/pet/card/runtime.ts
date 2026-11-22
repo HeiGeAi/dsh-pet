@@ -10,7 +10,7 @@ import { postAction } from '../../../shared/state.ts';
 import { ROUTE_PATH } from '../../../shared/constants.ts';
 import { resolveFontPx } from '../../../shared/fonts.ts';
 import { resolvePetSizePx } from '../../../shared/pet-size.ts';
-import { makeBalanceBubble, makeWhisperBubble } from '../../bubble.ts';
+import { makeBalanceBubble, makeEnvBubble, makeWhisperBubble } from '../../bubble.ts';
 import { makeTodoBubble } from '../../todo-bubble.ts';
 import { petBridge } from '../../settings.ts';
 import { playClickSound } from '../click-sound.ts';
@@ -42,14 +42,16 @@ export function createCardRuntime(rt: PetRuntime) {
   const { h, useEffect, useRef, useState } = rt;
   /** 余额气泡：数据与显隐由装配根传入。 */
   const BalanceBubble = makeBalanceBubble({ h, useState, useEffect });
-  /** 碎碎念气泡：文本与显隐由装配根传入。 */
-  const WhisperBubble = makeWhisperBubble({ h });
+  /** 环境气泡：按天气码画图标，数据与显隐由装配根传入。 */
+  const EnvBubble = makeEnvBubble({ h });
+  /** 碎碎念气泡：文本与显隐由装配根传入，戳破状态在组件内部。 */
+  const WhisperBubble = makeWhisperBubble({ h, useState, useEffect, useRef });
   /** 待办气泡：面板本体挂在自己身上，关闭按钮回调装配根。 */
   const TodoBubble = makeTodoBubble({ h, useEffect, useRef });
   /** 四种气泡的单槽：显隐、停留计时与优先级都在这里。 */
   const useBubbleSlots = createBubbleSlots(
     { h, useState, useEffect, useRef },
-    { balanceBubble: BalanceBubble, todoBubble: TodoBubble, whisperBubble: WhisperBubble },
+    { balanceBubble: BalanceBubble, envBubble: EnvBubble, todoBubble: TodoBubble, whisperBubble: WhisperBubble },
   );
   const useCardState = createCardState({ useState, useRef });
   const useLockFreeze = createLockFreeze({ useEffect, useRef });
@@ -61,7 +63,8 @@ export function createCardRuntime(rt: PetRuntime) {
   const useCardEntry = createCardEntry({ useEffect, useRef });
 
   return function useCardRuntime(props: PetCardProps): CardViewProps {
-    const { arena, balance, balanceManual, cfg, lock, lockTick, menuItemsRef, sleep, sleepTick, workStatus } = props;
+    const { arena, balance, balanceManual, cfg, env, lock, lockTick, menuItemsRef, sleep, sleepTick, workStatus } =
+      props;
     const { onFocusSession } = props;
 
     // 实际渲染宽度：百分比只在挂载与配置变更时按当次视口宽解析一次，拖窗口不跟随。
@@ -127,6 +130,7 @@ export function createCardRuntime(rt: PetRuntime) {
       balance,
       balanceEnabled: cfg.balanceEnabled,
       balanceManual,
+      env: env ?? null,
       workStatusEnabled: cfg.workStatusEnabled,
       workTerminal: workStatus?.state === 'success' || workStatus?.state === 'error',
       workSessionId: workStatus?.sessionId ?? null,

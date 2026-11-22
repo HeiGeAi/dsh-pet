@@ -63,10 +63,7 @@ contextBridge.exposeInMainWorld('petBridge', {
   captureScreen() {
     return ipcRenderer.invoke('pet:capture-screen');
   },
-  // 宠物间碰撞（跨窗 broker）：飞行方上报状态，主进程汇聚广播；被撞方收 pet:hit 后按新初速抛出。
-  reportFlight(state) {
-    ipcRenderer.send('pet:report-flight', state);
-  },
+  // 宠物间碰撞（跨窗 broker）：位置与速度随 setBounds 捎带，主进程汇聚后广播；被撞方收 pet:hit 后按新初速抛出。
   onFlightStates(cb) {
     ipcRenderer.on('pet:flight-states', (e, states) => cb(states));
   },
@@ -80,5 +77,10 @@ contextBridge.exposeInMainWorld('petBridge', {
   // 渲染端就地重挂视口与边界。
   onDisplays(cb) {
     ipcRenderer.on('pet:displays', (e, geo) => cb(geo));
+  },
+  // 主进程兜底：宠物自己走开、或窗口被别的窗口接走时，渲染端收不到 mousemove，悬浮提示会一直亮着；
+  // 主进程按光标轮询判定「刚离开身体」后通知这里收起。
+  onPointerLeft(cb) {
+    ipcRenderer.on('pet:pointer-left', () => cb());
   },
 });
