@@ -99,6 +99,16 @@ npm run build          # 完整 lib：tsdown + 桌面共享核心 + 类型声明
 npm run standalone     # Node 形态启动，等同 dsh-pet-standalone
 ```
 
+### 联动 macOS 上的 Claude Code
+
+Claude Desktop 的 **Code 本地会话**可用官方 Hooks 让独立桌宠显示思考、执行、等待确认、完成和出错状态。
+
+1. 按上文构建并启动独立桌宠，确认宠物启用了“工作状态联动”。
+2. 在源码的 `dsh-pet` 目录运行 `node scripts/claude-code-hook.mjs --print-hooks`。如果启动桌宠时设置了 `DSH_HOME`，生成配置时也传入同一个目录，作为 `--print-hooks` 后面的参数。npm 全局安装后，脚本路径是 `$(npm root -g)/dsh-pet/scripts/claude-code-hook.mjs`。
+3. 将生成的 `hooks` 合入项目的 `.claude/settings.local.json`。同名事件下追加新条目，保留已有 Hooks 与其他配置。希望对本机所有项目启用时，合入 `~/.claude/settings.json`。用 Claude Desktop 的 **Code** 标签页打开本地项目并发起会话。
+
+Hook 只向本机桌宠传递会话标识和状态。提示词、回复正文、命令参数和项目路径不会发给桌宠。关闭桌宠时 Hook 静默退出，移除生成的 Hook 条目即可解除联动。Claude 的普通聊天、云端和 SSH 会话不在此次接入范围内。
+
 ### 打包成 exe
 
 ```sh

@@ -19,7 +19,7 @@ import { createChatMemory } from './plugin/chat-memory.ts';
 import { createSessionNotify } from './plugin/session-notify.ts';
 import { createPetLookup } from './plugin/pet-lookup.ts';
 import { createDownloadReport } from './plugin/download-report.ts';
-import { createWorkStatusBridge } from './plugin/work-status-bridge.ts';
+import { createWorkStatusBridge, type AttachExternalWorkStatus } from './plugin/work-status-bridge.ts';
 import { registerTodoReminders } from './plugin/todo-reminders.ts';
 import { DEEPSEEK_OFFICIAL_PROVIDER_ID } from './balance/providers/deepseek-official.ts';
 import { ensureDeepseekAsrProvider } from './voice/builtin-deepseek-asr.ts';
@@ -58,6 +58,10 @@ export function apply(ctx: any): void {
   } = setup;
   const workStatusBridge = createWorkStatusBridge({ state, workStatus, EXTERNAL_WORK_SESSION });
   const { publishWorkStatus, stopWorkStatusFlush } = workStatusBridge;
+  const attachExternalWorkStatus = ctx.attachExternalWorkStatus as AttachExternalWorkStatus | undefined;
+  if (attachExternalWorkStatus) {
+    ctx.effect(() => attachExternalWorkStatus({ workStatus, nextExternalWorkSeq, publishWorkStatus }));
+  }
   const downloadReport = createDownloadReport({
     EXTERNAL_WORK_SESSION,
     nextExternalWorkSeq,
