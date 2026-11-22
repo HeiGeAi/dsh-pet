@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { resetVoiceProviders, registerVoiceProvider } from './registry.ts';
-import { MAX_TEXT_CHARS, createVoiceService, isQueueStale, type VoiceService } from './speak.ts';
+import { MAX_QUEUE, MAX_TEXT_CHARS, createVoiceService, isQueueStale, type VoiceService } from './speak.ts';
 import type { SynthInput, VoiceFormat, VoiceProvider } from './types.ts';
 
 /** 一次用例要装的实现选项。 */
@@ -52,15 +52,6 @@ async function withService(
     // 排队用例里可能有合成仍在写盘：带重试的删除，否则偶发 ENOTEMPTY
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
-}
-
-/** 轮询直到条件成立；用 setImmediate 推进，不依赖固定睡眠时长。 */
-async function waitFor(check: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    if (check()) return;
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  assert.fail('等待条件超时');
 }
 
 test('text 为空或全空白：判 bad-request 且不调用合成', () =>
@@ -293,25 +284,22 @@ test('实现超过 timeoutMs 不返回：判 generate-error', () =>
     },
   ));
 
-test('队列已满：后续请求判 voice-busy，而不是无限排队', () => {
+test('队列已满：后续请求判 voice-busy，而不是无限排队', { timeout: 5_000 }, () => {
   let release: () => void = () => undefined;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
   return withService(
     async (voice) => {
-      let settled = 0;
-      const calls = ['a', 'b', 'c', 'd', 'e'].map((text) =>
-        voice.speak({ text }).then((result) => {
-          settled += 1;
-          return result;
-        }),
-      );
-      await waitFor(() => settled >= 2);
-      release();
-      const results = await Promise.all(calls);
-      const busy = results.filter((result) => !result.ok && result.reason === 'voice-busy');
-      assert.ok(busy.length >= 1, '至少有一个请求应被判为 voice-busy');
+      const calls = Array.from({ length: MAX_QUEUE + 1 }, (_, index) => voice.speak({ text: `第 ${index} 句` }));
+      try {
+        const overflow = await Promise.race(calls);
+        assert.equal(overflow.ok === false ? overflow.reason : '', 'voice-busy');
+        assert.match(overflow.ok === false ? overflow.message : '', /queue is full/);
+      } finally {
+        release();
+        await Promise.all(calls);
+      }
     },
     {
       synthesize: async () => {
@@ -328,34 +316,50 @@ test('isQueueStale —— 排队久了就丢弃', () => {
   assert.equal(isQueueStale(1_000, 1_000 + 28_001), true, '超过上限就该丢');
 });
 
-test('排队等到客户端早已放弃：直接丢弃，不再白合成一次', async () => {
+test('排队等到客户端早已放弃：直接丢弃，不再白合成一次', { timeout: 5_000 }, async (t) => {
+  const staleWaitMs = 10;
+  let now = 1_000;
+  t.mock.method(Date, 'now', () => now);
   let release: () => void = () => undefined;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
+  let signalStarted: () => void = () => undefined;
+  const started = new Promise<void>((resolve) => {
+    signalStarted = resolve;
+  });
   let calls = 0;
   await withService(
     async (voice) => {
+      const first = voice.speak({ text: '第一句' });
+      const pending = [first];
       try {
-        const first = voice.speak({ text: '第一句' });
-        await waitFor(() => calls === 1);
-        const second = voice.speak({ text: '第二句' });
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        await Promise.race([started, first.then(() => assert.fail('第一句应先进入合成'))]);
+        const waiting = Array.from({ length: MAX_QUEUE }, (_, index) => voice.speak({ text: `候补 ${index} 句` }));
+        pending.push(...waiting);
+        const overflow = await Promise.race(waiting);
+        assert.equal(overflow.ok === false ? overflow.reason : '', 'voice-busy');
+        assert.match(overflow.ok === false ? overflow.message : '', /queue is full/);
+        now += staleWaitMs + 1;
         release();
-        const [kept, dropped] = await Promise.all([first, second]);
+        const [kept, ...queued] = await Promise.all(pending);
         assert.equal(kept.ok, true, '排在第一的照常合成');
-        assert.equal(dropped.ok === false ? dropped.reason : '', 'voice-busy');
-        assert.match(dropped.ok === false ? dropped.message : '', /queued too long/);
-        assert.equal(calls, 1, '被丢弃的那句不能再合成');
+        const expired = queued.filter(
+          (result) => !result.ok && result.reason === 'voice-busy' && /queued too long/.test(result.message),
+        );
+        assert.equal(expired.length, MAX_QUEUE - 1, '所有排队请求都应过期');
+        assert.equal(calls, 1, '过期请求不能再合成');
       } finally {
         release();
+        await Promise.all(pending);
       }
     },
     {
-      staleWaitMs: 0,
+      staleWaitMs,
       synthesize: async () => {
         calls += 1;
-        if (calls === 1) await gate;
+        signalStarted();
+        await gate;
         return new Uint8Array([1]);
       },
     },
