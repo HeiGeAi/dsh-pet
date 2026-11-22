@@ -58,8 +58,9 @@ export function apply(ctx: any): void {
   } = setup;
   const workStatusBridge = createWorkStatusBridge({ state, workStatus, EXTERNAL_WORK_SESSION });
   const { publishWorkStatus, stopWorkStatusFlush } = workStatusBridge;
-  const attachExternalWorkStatus = ctx.attachExternalWorkStatus as AttachExternalWorkStatus | undefined;
-  if (attachExternalWorkStatus) {
+  const attachExternalWorkStatus = setup.optionalService('attachExternalWorkStatus') as
+    AttachExternalWorkStatus | undefined;
+  if (typeof attachExternalWorkStatus === 'function') {
     ctx.effect(() => attachExternalWorkStatus({ workStatus, nextExternalWorkSeq, publishWorkStatus }));
   }
   const downloadReport = createDownloadReport({
