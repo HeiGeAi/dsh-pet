@@ -9,7 +9,10 @@
  */
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { setImmediate } from 'node:timers/promises';
 
+import { setDefaultLogger } from '../host/log-file.ts';
+import { createHostSetup, type HostSetupContext } from '../host/plugin/setup.ts';
 import { createStandaloneContext } from './context.ts';
 import type { StandaloneLogger } from './context.ts';
 
@@ -38,4 +41,30 @@ describe('standalone 伪 ctx 的停机能力（托盘退出）', () => {
     const sc = createStandaloneContext({ port: 0, logger: silentLogger });
     assert.equal('shutdownApp' in sc.ctx, false, '没有停机能力时不得凭空造一个');
   });
+});
+
+test('context disposal waits for plugin log writes', async (t) => {
+  const context = createStandaloneContext({ port: 0, logger: silentLogger });
+  const { log } = createHostSetup(context.ctx as unknown as HostSetupContext);
+  t.after(() => {
+    log.dispose();
+    setDefaultLogger(null);
+  });
+  let resolve = (): void => {};
+  const promise = new Promise<void>((finish) => {
+    resolve = finish;
+  });
+  const flush = t.mock.method(log, 'flush', () => promise);
+  let disposed = false;
+  const teardown = context.dispose().then(() => {
+    disposed = true;
+  });
+  try {
+    await setImmediate();
+    assert.equal(flush.mock.callCount(), 1);
+    assert.equal(disposed, false, 'temporary storage must remain available until log writes finish');
+  } finally {
+    resolve();
+    await teardown;
+  }
 });

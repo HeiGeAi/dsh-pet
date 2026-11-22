@@ -28,7 +28,7 @@ export interface HostSetupContext {
   /** 宿主日志（可能已被 standalone 换成文件 logger）。 */
   readonly logger?: LoggerLike;
   /** 注册随插件卸载自动清理的副作用。 */
-  effect(setup: () => (() => void) | void, label: string): void;
+  effect(setup: () => (() => void | Promise<void>) | void, label: string): void;
   /** 对外提供 Cordis 服务。 */
   provide(name: string, value: unknown): void;
 }
@@ -113,8 +113,8 @@ export function createHostSetup(ctx: HostSetupContext): HostSetup {
   if (!reusedLog) {
     ctx.effect(
       () => () => {
-        void log.flush();
         log.dispose();
+        return log.flush(); // 等已经开始的文件操作完成，避免卸载后仍创建日志目录。
       },
       'dsh-pet: log file',
     );
