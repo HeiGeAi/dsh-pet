@@ -15,9 +15,11 @@
  */
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { packageRoot } from '../host/helper-process.ts';
 import { apply } from '../host/index.ts';
@@ -25,6 +27,8 @@ import { createStandaloneContext, type RegisteredRoute, type StandaloneLogger } 
 import { configPathsFor } from './options.ts';
 import { listenStandaloneServer, type StandaloneServer } from './server.ts';
 import { createRequestSecurity } from './request-security.ts';
+import { registerClaudeCodeStatus } from './claude-code.ts';
+import { writeStandaloneRuntime } from './runtime-state.ts';
 
 /** 静默日志器（插件仍会往 console 打少量 warn，那是它自己的诊断，这里不拦） */
 const silent: StandaloneLogger = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
@@ -47,6 +51,7 @@ before(async () => {
   const routes: RegisteredRoute[] = [];
   const portRef = { value: 0 };
   const created = createStandaloneContext({ port: () => portRef.value, logger: silent, routes });
+  created.ctx.attachExternalWorkStatus = registerClaudeCodeStatus(routes);
   const listening = await listenStandaloneServer({
     routes,
     logger: silent,
@@ -134,10 +139,10 @@ test('config pet IDs: duplicate IDs return 200 + bad-request without creating a 
 describe('插件宿主半边在独立模式下跑起来了', () => {
   test('apply 注册了插件自己的路由前缀（独立模式不自己写路由表）', () => {
     const routes = context?.routes ?? [];
-    assert.equal(routes.length, 1, '当前插件只注册一条 prefix 路由；多出来的注册要在这里显式确认');
-    assert.equal(routes[0]?.kind, 'prefix');
-    assert.equal(routes[0]?.path, '/dsh-pet-7340');
-    assert.equal(typeof routes[0]?.handler, 'function');
+    const pluginRoutes = routes.filter(({ kind }) => kind === 'prefix');
+    assert.equal(pluginRoutes.length, 1, '当前插件只注册一条 prefix 路由');
+    assert.equal(pluginRoutes[0]?.path, '/dsh-pet-7340');
+    assert.equal(typeof pluginRoutes[0]?.handler, 'function');
   });
 
   test('/state 与 DSH 内同形（独立模式没有任何会话事件 → 叶子保持初始值）', async () => {
@@ -221,4 +226,55 @@ describe('独立服务自己的端点', () => {
     assert.deepEqual(await response.json(), { ok: true, stopping: true });
     assert.equal((await get('/dsh-pet-7340/state')).status, 200, '测试里没人真的停机：服务应继续可用');
   });
+});
+
+test('Claude hooks authenticate locally and keep concurrent sessions independent', async (t) => {
+  const security = createRequestSecurity();
+  const protectedServer = await listenStandaloneServer({
+    routes: context?.routes ?? [],
+    logger: silent,
+    port: 0,
+    security,
+  });
+  t.after(() => protectedServer.close());
+  const url = `http://127.0.0.1:${protectedServer.port}`;
+  const release = writeStandaloneRuntime(home, {
+    port: protectedServer.port,
+    token: security.token,
+    settingsUrl: security.authenticatedUrl(url),
+    pluginRoot: packageRoot,
+  });
+  t.after(release);
+  const headers = { 'content-type': 'application/json' };
+  const denied = await fetch(`${url}/claude-code/status`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ sessionId: 'other', state: 'working' }),
+  });
+  assert.equal(denied.status, 403);
+  await denied.text();
+
+  const snapshot = async () => {
+    const response = await fetch(`${url}/dsh-pet-7340/state`);
+    assert.equal(response.status, 200);
+    return ((await response.json()) as { sections: { workStatus: { data: unknown } } }).sections.workStatus.data;
+  };
+  const fireHook = async (event: string, sessionId: string): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const hook = new URL('../../scripts/claude-code-hook.mjs', import.meta.url);
+      const child = spawn(process.execPath, [fileURLToPath(hook), home], { stdio: ['pipe', 'inherit', 'inherit'] });
+      child.once('error', reject);
+      child.once('exit', (code) => (code === 0 ? resolve() : reject(new Error(`hook exited: ${code}`))));
+      child.stdin.end(JSON.stringify({ hook_event_name: event, session_id: sessionId, prompt: 'private prompt' }));
+    });
+
+  await fireHook('PreToolUse', 'active-session');
+  await fireHook('Stop', 'finished-session');
+  assert.deepEqual(await snapshot(), { state: 'working', task: null, sessionId: null });
+  await fireHook('PermissionRequest', 'active-session');
+  assert.deepEqual(await snapshot(), { state: 'waiting', task: null, sessionId: null });
+  await fireHook('SessionEnd', 'active-session');
+  assert.deepEqual(await snapshot(), { state: 'success', task: null, sessionId: null });
+  await fireHook('SessionEnd', 'finished-session');
+  assert.deepEqual(await snapshot(), { state: null, task: null, sessionId: null });
 });

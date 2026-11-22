@@ -7,6 +7,12 @@
  */
 import type { HostSetup } from './setup.ts';
 
+export const EXTERNAL_WORK_SESSION_PREFIX = 'external:';
+
+export type AttachExternalWorkStatus = (
+  deps: Pick<HostSetup, 'workStatus' | 'nextExternalWorkSeq'> & { publishWorkStatus(): void },
+) => () => void;
+
 /** 工作状态桥的输入：轮询快照、工作状态 store，以及判定「外部槽」用的哨兵会话 id。 */
 export type WorkStatusBridgeInput = Pick<HostSetup, 'state' | 'workStatus' | 'EXTERNAL_WORK_SESSION'>;
 
@@ -53,8 +59,11 @@ export function createWorkStatusBridge(deps: WorkStatusBridgeInput) {
     publishedWork = key;
     publishedState = snap.state;
     publishedWorkAt = Date.now();
-    // 外部槽（`api`）不是真实 DSH 会话：这里写成 null，客户端才不会把气泡做成一个点了没反应的入口。
-    const sessionId = snap.sessionId === null || snap.sessionId === EXTERNAL_WORK_SESSION ? null : snap.sessionId;
+    // 外部状态没有可跳转的 DSH 会话，快照不暴露外部会话标识。
+    const sessionId =
+      snap.sessionId === EXTERNAL_WORK_SESSION || snap.sessionId?.startsWith(EXTERNAL_WORK_SESSION_PREFIX)
+        ? null
+        : snap.sessionId;
     state.writeSection('workStatus', { state: snap.state, task: snap.task, sessionId });
   };
 

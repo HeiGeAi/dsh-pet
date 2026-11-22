@@ -65,6 +65,7 @@ const keep = [
   // 新增内置角色时在这里补一行（文件名里的素材根跟着角色走）。
   'assets/main-character.png',
   'scripts/ensure-electron.mjs',
+  'scripts/claude-code-hook.mjs',
   'cordis.patch.yml',
 ];
 writeFileSync(PKG, JSON.stringify({ ...pkg, files: keep }, null, 2) + '\n', 'utf8');
